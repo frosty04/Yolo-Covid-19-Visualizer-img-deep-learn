@@ -4,6 +4,9 @@ from scipy.spatial import distance as dist
 
 SIZE = (320, 320)
 MIN_CONFIDENCE = 0.5
+NMS_THRESHOLD = 0.2 # "sensibilità" del NMS
+
+TARGET_CLASS = ["person", "bicycle"] # così da poter visualizzare solo le persone
 
 def load_yolo(yolo_path=""):
     net = cv2.dnn.readNet(yolo_path+"yolov3.weights", yolo_path+"yolov3.cfg")
@@ -37,6 +40,7 @@ def detect_objects(img, net, output_layers):
 
 def get_boxes(outputs, height, width): 
     boxes = []
+    confidences = []
     objects_id = []
 
     for output in outputs:
@@ -46,8 +50,7 @@ def get_boxes(outputs, height, width):
             # in questo caso la probabilità di appartenenza alle classi maggiore
             conf = scores[class_id]
 
-            if(conf>MIN_CONFIDENCE):
-                
+            if(classes[class_id] in TARGET_CLASS and conf>MIN_CONFIDENCE):
                 center_x = int(detect[0]*width) # "stretching" del box
                 center_y = int(detect[1]*height) # "stretching" del box
 
@@ -59,8 +62,21 @@ def get_boxes(outputs, height, width):
 
                 boxes.append((x, y, w, h))
                 objects_id.append(class_id)
+                confidences.append(conf.astype(float))
 
-    return objects_id, boxes
+    return objects_id, boxes, confidences
+
+
+def non_max_suppression(boxes, confidences, min_confidence, threshold):
+
+    boxesMax = []
+    boxesIds = cv2.dnn.NMSBoxes(boxes, confidences, min_confidence, threshold)
+
+    for boxId in boxesIds:
+        boxesMax.append(boxes[boxId[0]])
+
+    return boxesMax
+
 
 
 def draw_results(img, boxes, class_ids):
@@ -78,8 +94,13 @@ def draw_results(img, boxes, class_ids):
 net, output_layers, classes, colors = load_yolo()
 img = cv2.imread("bikes.jpg")
 outputs, blob = detect_objects(img, net, output_layers)
-objects_id, boxes = get_boxes(outputs, img.shape[0], img.shape[1])
+objects_id, boxes, confidences = get_boxes(outputs, img.shape[0], img.shape[1])
+boxes = non_max_suppression(boxes, confidences, MIN_CONFIDENCE, NMS_THRESHOLD)
+print(boxes)
+
+#print(cv2.dnn.NMSBoxes(boxes, confidences, MIN_CONFIDENCE, 0.3)) # box che rimangono dopo la "non maximum suppression"
+
 img_out = draw_results(img, boxes, objects_id)
 
-cv2.imshow("Output", img_out)
+cv2.imshow("Output with NMS", img_out)
 cv2.waitKey(0) # senza questo, loop infinito di apri e chiudi
